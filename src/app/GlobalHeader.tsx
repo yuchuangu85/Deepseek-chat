@@ -22,6 +22,7 @@ export const GlobalHeader = ({
   return (
     <header className={styles.header}>
       <div className={styles.left}>
+        <div className={styles.brand}>{t('appName')}</div>
         {canOpenHistory ? (
           <IconButton
             size={mobile ? 'xl' : 'm'}

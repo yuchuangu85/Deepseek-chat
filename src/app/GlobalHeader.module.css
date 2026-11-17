@@ -18,9 +18,25 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
+  justify-content: flex-start;
+  gap: 8px;
   flex-shrink: 0;
+}
+.left {
+  min-width: 44px;
+}
+
+.brand {
+  color: var(--dsw-alias-brand-primary);
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.right {
+  width: 44px;
+  justify-content: center;
 }
 
 .navigation {
@@ -34,5 +50,9 @@
 @media not all and (min-width: 768px) {
   .header {
     padding: 0 8px;
+  }
+
+  .brand {
+    display: none;
   }
 }
