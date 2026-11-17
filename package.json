@@ -13,6 +13,7 @@
     "test:asr": "node --test tests/asr-api.test.mjs",
     "test:tts": "node --test tests/tts-download.test.mjs",
     "test:tool-history": "node --test tests/tool-history.test.mjs src/components/toolHistory/ToolHistorySidebar.test.mjs",
+    "test:session-menu": "node --test tests/session-menu.test.mjs",
     "test:chat-drafts": "node --test tests/chat-draft-send.test.mjs",
     "format": "oxfmt --write ."
   },

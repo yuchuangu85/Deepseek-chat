@@ -76,8 +76,15 @@ export const SessionItem = memo(function SessionItem({
             },
           ]}
         >
-          {({ toggle }) => (
-            <IconButton icon={<IconEllipsisOutline16 />} aria-label={t('more')} onClick={toggle} />
+          {({ open, toggle }) => (
+            <IconButton
+              className={open ? styles.menuOpen : undefined}
+              icon={<IconEllipsisOutline16 />}
+              aria-label={t('more')}
+              aria-haspopup="menu"
+              aria-expanded={open}
+              onClick={toggle}
+            />
           )}
         </Menu>
       </div>

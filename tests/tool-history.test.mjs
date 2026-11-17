@@ -132,6 +132,44 @@ const main = async () => {
   check(await setToolHistoryEnabled('tts', true), 'restore tts setting')
   const ttsPermit = await capture('tts')
   equal(await addToolHistory({ kind: 'tts', text: 'baseline tts', voice: 'stella' }, ttsPermit), 'saved', 'baseline tts')
+  const sameTts = { kind: 'tts', text: 'baseline tts', voice: 'stella' }
+  const baselineTts = state().entries.find((entry) => entry.kind === 'tts' && entry.text === sameTts.text)
+  const matchingTts = (text, voice) => state().entries.filter((entry) => entry.kind === 'tts' && entry.text === text && entry.voice === voice)
+  selectToolHistory(baselineTts)
+  equal(await addToolHistory(sameTts, ttsPermit), 'saved', 'download after playback succeeds')
+  equal(matchingTts(sameTts.text, sameTts.voice), [baselineTts], 'download reuses the existing record without changing its identity or timestamp')
+  equal(await other.addToolHistory(sameTts, await capture('tts', other)), 'saved', 'repeat from another instance succeeds')
+  check(await initToolHistory(), 'reload after repeated tts')
+  equal(matchingTts(sameTts.text, sameTts.voice), [baselineTts], 'tts deduplication persists across instances')
+  equal(await addToolHistory({ ...sameTts, voice: 'tide' }, ttsPermit), 'saved', 'different voice saved')
+  equal(await addToolHistory({ ...sameTts, text: 'different tts text' }, ttsPermit), 'saved', 'different text saved')
+  check(matchingTts(sameTts.text, 'tide').length === 1 && matchingTts('different tts text', sameTts.voice).length === 1, 'different text and voice remain separate records')
+  const concurrentTts = { kind: 'tts', text: 'concurrent duplicate tts', voice: 'stella' }
+  const otherTtsPermit = await capture('tts', other)
+  equal(await Promise.all([
+    addToolHistory(concurrentTts, ttsPermit),
+    other.addToolHistory(concurrentTts, otherTtsPermit),
+  ]), ['saved', 'saved'], 'concurrent duplicate writes succeed')
+  check(await initToolHistory(), 'reload after concurrent tts')
+  check(matchingTts(concurrentTts.text, concurrentTts.voice).length === 1, 'concurrent instances cannot create duplicate tts records')
+  check(await setToolHistoryEnabled('tts', false), 'disable tts before duplicate')
+  equal(await addToolHistory(sameTts, ttsPermit), 'disabled', 'duplicates still respect disabled history')
+  check(await setToolHistoryEnabled('tts', true), 're-enable tts after duplicate')
+  equal(await addToolHistory(sameTts, ttsPermit), 'disabled', 'duplicates still reject stale permits')
+  check(await deleteToolHistory('tts', baselineTts.id), 'delete original tts')
+  equal(await addToolHistory(sameTts, await capture('tts')), 'saved', 'deleted tts can be saved by a new operation')
+  const replacementTts = matchingTts(sameTts.text, sameTts.voice)
+  check(replacementTts.length === 1 && replacementTts[0].id !== baselineTts.id, 'new operation creates a record only after original deletion')
+  const repeatedSearch = { kind: 'search', query: 'repeated search' }
+  const repeatSearchPermit = await capture('search')
+  equal(await addToolHistory(repeatedSearch, repeatSearchPermit), 'saved', 'first repeated search')
+  equal(await addToolHistory(repeatedSearch, repeatSearchPermit), 'saved', 'second repeated search')
+  check(state().entries.filter((entry) => entry.kind === 'search' && entry.query === repeatedSearch.query).length === 2, 'search history behavior unchanged')
+  const repeatedAsr = { kind: 'asr', text: 'repeated transcript', fileName: null, durationMs: null }
+  const repeatAsrPermit = await capture('asr')
+  equal(await addToolHistory(repeatedAsr, repeatAsrPermit), 'saved', 'first repeated asr')
+  equal(await addToolHistory(repeatedAsr, repeatAsrPermit), 'saved', 'second repeated asr')
+  check(state().entries.filter((entry) => entry.kind === 'asr' && entry.text === repeatedAsr.text).length === 2, 'asr history behavior unchanged')
   const ttsFailurePermit = await capture('tts')
   const before = JSON.stringify({ entries: state().entries, enabled: state().enabled })
   const originalOpen = indexedDB.open
@@ -285,7 +323,9 @@ test('tool history persists and fails closed in real IndexedDB', { timeout: 6000
       browser.kill()
       await new Promise((resolve) => browser.once('exit', resolve))
     }
-    if (server) await new Promise((resolve) => server.close(resolve))
+    if (server) {
+      await new Promise((resolve) => server.close(resolve))
+    }
     await rm(temp, { recursive: true, force: true })
   }
 })

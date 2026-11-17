@@ -22,9 +22,10 @@
     }
 
     &:hover,
-    &.active {
+    &.active,
+    &:focus-within {
       .action {
-        display: flex;
+        visibility: visible;
       }
     }
   }
@@ -40,9 +41,14 @@
 }
 
 .action {
-  display: none;
+  display: flex;
+  visibility: hidden;
   flex-shrink: 0;
   margin-left: 4px;
+}
+
+.menuOpen {
+  visibility: visible;
 }
 
 .renameInput {
@@ -61,7 +67,7 @@
 
 @media (hover: none) {
   .action {
-    display: flex;
+    visibility: visible;
   }
 }
 

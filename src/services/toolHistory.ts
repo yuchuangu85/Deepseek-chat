@@ -294,7 +294,9 @@ const run = async (change: Change): Promise<RunResult> => {
             })
           )
         )
-        await Promise.all(change.archive.entries.map((entry) => tx.objectStore('entries').add(entry)))
+        await Promise.all(
+          change.archive.entries.map((entry) => tx.objectStore('entries').add(entry))
+        )
         entries = change.archive.entries.slice()
         for (const kind of kinds) {
           enabled[kind] = change.archive.enabled[kind]
@@ -307,7 +309,14 @@ const run = async (change: Change): Promise<RunResult> => {
           !matchesPermit(change.permit, input.kind, generations[input.kind])
         ) {
           result = { status: 'disabled' }
-        } else {
+        } else if (
+          input.kind !== 'tts' ||
+          !entries.some(
+            (entry) =>
+              entry.kind === 'tts' && entry.text === input.text && entry.voice === input.voice
+          )
+        ) {
+          // Playback and download share one record; check inside the same transaction.
           const entry: ToolHistoryEntry = { ...input, id: createId(), createdAt: Date.now() }
           await tx.objectStore('entries').add(entry)
           entries.push(entry)

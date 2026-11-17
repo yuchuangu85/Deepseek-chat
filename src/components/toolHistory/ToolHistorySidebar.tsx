@@ -5,11 +5,13 @@ import {
   initToolHistory,
   deleteToolHistory,
   selectToolHistory,
+  type ToolHistoryEntry,
   type ToolHistoryKind,
 } from '../../services/toolHistory.js'
 import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
 import { IconTrashOutline16 } from '../base/icons.js'
+import { Modal } from '../base/Modal.js'
 import styles from './ToolHistorySidebar.module.css'
 
 const messages = {
@@ -23,6 +25,9 @@ const messages = {
     retry: '重试',
     empty: '暂无历史记录',
     delete: '删除记录',
+    deleteTitle: '删除这条历史记录？',
+    deleteDescription: '删除后将无法恢复，确认删除吗？',
+    cancel: '取消',
     unknownDate: '时间未知',
     stella: '海星',
     tide: '潮汐',
@@ -37,6 +42,9 @@ const messages = {
     retry: 'Retry',
     empty: 'No history yet',
     delete: 'Delete entry',
+    deleteTitle: 'Delete this history entry?',
+    deleteDescription: 'This entry will be permanently deleted and cannot be recovered.',
+    cancel: 'Cancel',
     unknownDate: 'Unknown time',
     stella: 'Stella',
     tide: 'Tide',
@@ -60,6 +68,7 @@ export const ToolHistorySidebar = ({
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
   const [failure, setFailure] = useState(false)
+  const [deleting, setDeleting] = useState<ToolHistoryEntry | null>(null)
   const list = entries
     .filter((entry) => entry.kind === kind)
     .slice()
@@ -107,9 +116,16 @@ export const ToolHistorySidebar = ({
     }
   }
 
+  const cancelDeletion = () => {
+    if (!pendingRef.current) {
+      setDeleting(null)
+      setFailure(false)
+    }
+  }
+
   return (
     <aside className={`${styles.sidebar} ${mobile ? styles.mobile : ''}`} aria-label={title}>
-      {ready && (error || failure) ? (
+      {ready && !deleting && (error || failure) ? (
         <div className={styles.error} role="alert">
           <span>{text.operationError}</span>
           {error ? (
@@ -167,7 +183,7 @@ export const ToolHistorySidebar = ({
                   <button
                     type="button"
                     className={styles.entry}
-                    disabled={pending}
+                    disabled={pending || deleting !== null}
                     onClick={() => {
                       try {
                         selectToolHistory(entry)
@@ -187,8 +203,11 @@ export const ToolHistorySidebar = ({
                     icon={<IconTrashOutline16 />}
                     tooltip={text.delete}
                     aria-label={`${text.delete}: ${content}`}
-                    disabled={pending}
-                    onClick={() => void run(() => deleteToolHistory(kind, entry.id))}
+                    disabled={pending || deleting !== null}
+                    onClick={() => {
+                      setFailure(false)
+                      setDeleting(entry)
+                    }}
                   />
                 </li>
               )
@@ -196,6 +215,41 @@ export const ToolHistorySidebar = ({
           </ul>
         )}
       </div>
+      {deleting ? (
+        <Modal
+          title={text.deleteTitle}
+          onClose={cancelDeletion}
+          footer={
+            <>
+              <Button variant="outlined" autoFocus disabled={pending} onClick={cancelDeletion}>
+                {text.cancel}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={pending}
+                onClick={() =>
+                  void run(async () => {
+                    const deleted = await deleteToolHistory(deleting.kind, deleting.id)
+                    if (deleted) {
+                      setDeleting(null)
+                    }
+                    return deleted
+                  })
+                }
+              >
+                {text.delete}
+              </Button>
+            </>
+          }
+        >
+          {text.deleteDescription}
+          {failure ? (
+            <p className={styles.error} role="alert">
+              {text.operationError}
+            </p>
+          ) : null}
+        </Modal>
+      ) : null}
     </aside>
   )
 }

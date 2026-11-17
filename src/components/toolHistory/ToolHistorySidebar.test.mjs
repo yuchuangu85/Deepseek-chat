@@ -33,11 +33,19 @@ try {
   rmSync(temp, { recursive: true, force: true })
 }
 
-function fixture() {
+function fixture(locale = 'en-US') {
   const state = {
     entries: [
       { id: 'old', kind: 'search', query: 'old query', createdAt: 1 },
       { id: 'speech', kind: 'tts', text: 'speech text', voice: 'tide', createdAt: 4 },
+      {
+        id: 'transcript',
+        kind: 'asr',
+        text: 'asr text',
+        fileName: null,
+        durationMs: null,
+        createdAt: 2,
+      },
       { id: 'new', kind: 'search', query: 'new query', createdAt: 3 },
     ],
     enabled: { search: true, asr: true, tts: true },
@@ -92,7 +100,7 @@ function fixture() {
   const modules = {
     react: react,
     'react/jsx-runtime': jsx,
-    '../../services/settings.js': { useSettings: (selector) => selector({ locale: 'en-US' }) },
+    '../../services/settings.js': { useSettings: (selector) => selector({ locale }) },
     '../../services/toolHistory.js': service,
     '../base/Button.js': { Button: 'Button' },
     '../base/IconButton.js': { IconButton: 'IconButton' },
@@ -159,23 +167,115 @@ test('filters and sorts history, selecting invokes selection callback', () => {
   assert.equal(closed, 1)
 })
 
-test('sidebar does not expose history settings and delete passes the current kind', async () => {
+for (const [kind, id] of [
+  ['search', 'new'],
+  ['asr', 'transcript'],
+  ['tts', 'speech'],
+]) {
+  test(`${kind} history deletion requires confirmation and passes the captured target`, async () => {
+    const f = fixture()
+    const tree = f.render({ kind })
+    assert.equal(byType(tree, 'input').length, 0)
+    byType(tree, 'IconButton')[0].props.onClick()
+    await flush()
+    assert.deepEqual(f.calls, [])
+    const modal = byType(f.render({ kind }), 'Modal')[0]
+    assert.ok(modal)
+    byType(modal, 'Button')
+      .find((button) => button.props.variant === 'danger')
+      .props.onClick()
+    await flush()
+    assert.deepEqual(f.calls, [['delete', kind, id]])
+    assert.equal(byType(f.render({ kind }), 'Modal').length, 0)
+  })
+}
+
+test('cancel and modal dismissal preserve history without calling delete', async () => {
   const f = fixture()
-  let tree = f.render()
-  assert.equal(byType(tree, 'input').length, 0)
-  const deleteButton = elements(
-    tree,
-    (node) => node.type === 'IconButton' && node.props['aria-label']?.startsWith('Delete entry')
-  )[0]
-  deleteButton.props.onClick()
+  byType(f.render(), 'IconButton')[0].props.onClick()
+  let modal = byType(f.render(), 'Modal')[0]
+  byType(modal, 'Button')
+    .find((button) => button.props.children === 'Cancel')
+    .props.onClick()
+  assert.equal(byType(f.render(), 'Modal').length, 0)
+  byType(f.render(), 'IconButton')[0].props.onClick()
+  modal = byType(f.render(), 'Modal')[0]
+  modal.props.onClose()
   await flush()
+  assert.equal(byType(f.render(), 'Modal').length, 0)
+  assert.deepEqual(f.calls, [])
+})
+
+test('pending deletion blocks duplicate submission and modal dismissal', async () => {
+  const f = fixture()
+  let complete
+  f.setResult(
+    new Promise((resolve) => {
+      complete = resolve
+    })
+  )
+  byType(f.render(), 'IconButton')[0].props.onClick()
+  let modal = byType(f.render(), 'Modal')[0]
+  const confirm = byType(modal, 'Button').find((button) => button.props.variant === 'danger')
+  confirm.props.onClick()
+  confirm.props.onClick()
+  modal = byType(f.render(), 'Modal')[0]
+  assert.ok(byType(modal, 'Button').every((button) => button.props.disabled))
+  modal.props.onClose()
+  assert.equal(byType(f.render(), 'Modal').length, 1)
   assert.deepEqual(f.calls, [['delete', 'search', 'new']])
+  complete(true)
+  await flush()
+  assert.equal(byType(f.render(), 'Modal').length, 0)
+})
+
+test('failed deletion keeps the confirmation and allows retry', async () => {
+  const f = fixture()
+  f.setResult(false)
+  byType(f.render(), 'IconButton')[0].props.onClick()
+  let modal = byType(f.render(), 'Modal')[0]
+  byType(modal, 'Button')
+    .find((button) => button.props.variant === 'danger')
+    .props.onClick()
+  await flush()
+  modal = byType(f.render(), 'Modal')[0]
+  assert.ok(modal)
+  assert.equal(elements(modal, (node) => node.props?.role === 'alert').length, 1)
+  assert.deepEqual(f.calls, [['delete', 'search', 'new']])
+  f.setResult(true)
+  byType(modal, 'Button')
+    .find((button) => button.props.variant === 'danger')
+    .props.onClick()
+  await flush()
+  assert.deepEqual(f.calls, [
+    ['delete', 'search', 'new'],
+    ['delete', 'search', 'new'],
+  ])
+  assert.equal(byType(f.render(), 'Modal').length, 0)
+})
+
+test('mobile deletion confirmation supports Chinese and English', () => {
+  for (const locale of ['zh-CN', 'en-US']) {
+    const f = fixture(locale)
+    byType(f.render({ mobile: true }), 'IconButton')[0].props.onClick()
+    const modal = byType(f.render({ mobile: true }), 'Modal')[0]
+    assert.ok(modal)
+    assert.ok(
+      byType(modal, 'Button').some(
+        (button) => button.props.children === (locale === 'zh-CN' ? '取消' : 'Cancel')
+      )
+    )
+    assert.deepEqual(f.calls, [])
+  }
 })
 
 test('sidebar does not expose a clear action', () => {
   const f = fixture()
   const tree = f.render()
-  assert.equal(byType(tree, 'Button').some((button) => button.props.children === 'Clear'), false)
+  assert.equal(
+    byType(tree, 'Button').some((button) => button.props.children === 'Clear'),
+    false
+  )
   assert.equal(byType(tree, 'Modal').length, 0)
 })
 
