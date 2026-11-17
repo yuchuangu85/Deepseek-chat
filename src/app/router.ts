@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 
-export type AppRoute = 'chat' | 'search' | 'fetch' | 'ocr' | 'tts'
+export type AppRoute = 'chat' | 'search' | 'fetch' | 'ocr' | 'asr' | 'tts'
 
-const ROUTES = new Set<AppRoute>(['chat', 'search', 'fetch', 'ocr', 'tts'])
+const ROUTES = new Set<AppRoute>(['chat', 'search', 'fetch', 'ocr', 'asr', 'tts'])
 
 export const getRoute = (hash = window.location.hash): AppRoute => {
   const path = hash.replace(/^#\/?/, '').split('?')[0]

@@ -10,6 +10,7 @@
     "build": "rm -rf dist && NODE_ENV=production rspack build -c rspack.config.ts",
     "type": "tsc -p tsconfig.json",
     "lint": "oxlint src rspack.config.ts",
+    "test:asr": "node --test tests/asr-api.test.mjs",
     "format": "oxfmt --write ."
   },
   "dependencies": {

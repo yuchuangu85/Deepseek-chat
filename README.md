@@ -33,6 +33,7 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 - Streaming replies, deep thinking, smart search, link reading, and source citations; stop generation or continue eligible replies.
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
 - Standalone web search with query operators, result summaries, and pagination.
+- Standalone ASR transcribes uploaded 16-bit PCM WAV or Ogg Opus audio (up to 8 MiB and 120 seconds). Stereo audio uses the left channel. Transcripts can be downloaded as TXT, Markdown, or JSON.
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import and export.
 
@@ -42,19 +43,22 @@ Your API key and settings are stored in the browser's localStorage. Conversation
 
 Standalone Search uses the browser-stored API key and sends queries directly to the configured service's `/v1/tools/search` endpoint. It does not use the separate server-side proxy, cache, or demo mode from the original `deepseek-search` project. The API service must allow browser cross-origin requests.
 
+ASR page settings store the file-picker filter and result detail visibility locally. The filter does not convert or validate audio; the service checks its format and duration. ASR automatically detects the language and receives no language, sample-rate, or channel setting in the request.
+
 History import and export in Settings use ZIP archives. After confirmation and successful validation, importing replaces all local conversations and attachments. Exports include conversations and locally available original images, but exclude API keys, settings, and original non-image attachments. See the [history import/export documentation (Chinese)](src/services/chat/history/README.md) for the archive format and preservation details.
 
 Settings → Data → Delete all chats clears all local conversations, original attachments, and unsent drafts after confirmation. It stops ongoing replies and returns to a new chat. Your API key and settings are preserved; files already uploaded to the API service are not deleted.
 
 ## Development
 
-| Command       | Description                  |
-| ------------- | ---------------------------- |
-| `pnpm dev`    | Start the development server |
-| `pnpm build`  | Build into `dist/`           |
-| `pnpm type`   | Run TypeScript type checks   |
-| `pnpm lint`   | Lint with oxlint             |
-| `pnpm format` | Format with oxfmt            |
+| Command         | Description                  |
+| --------------- | ---------------------------- |
+| `pnpm dev`      | Start the development server |
+| `pnpm build`    | Build into `dist/`           |
+| `pnpm type`     | Run TypeScript type checks   |
+| `pnpm lint`     | Lint with oxlint             |
+| `pnpm test:asr` | Run ASR client tests         |
+| `pnpm format`   | Format with oxfmt            |
 
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 

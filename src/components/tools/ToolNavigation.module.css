@@ -45,3 +45,10 @@
     font-size: 13px;
   }
 }
+
+@media (max-width: 439px) {
+  .navigation button {
+    padding: 0 2px;
+    font-size: 12px;
+  }
+}

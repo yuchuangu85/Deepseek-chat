@@ -19,6 +19,7 @@ import { ACCEPT, useUploads } from '../../services/attachments.js'
 import { addDraftFiles, clearDraft, getDraft, setDraftText } from '../../services/chat/drafts.js'
 import { sendMessage } from '../../services/chat/store.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
+import { AsrTool } from './AsrTool.js'
 import styles from './Tools.module.css'
 
 export const ToolsPage = ({
@@ -27,17 +28,23 @@ export const ToolsPage = ({
   initError,
   onRetry,
 }: {
-  tool: 'fetch' | 'ocr' | 'tts'
+  tool: 'fetch' | 'ocr' | 'asr' | 'tts'
   ready: boolean
   initError: boolean
   onRetry: () => void
 }) => {
   const t = useTranslate()
   const isMobile = useIsMobile()
-  const titles = { fetch: t('toolFetchTitle'), ocr: t('toolOcrTitle'), tts: t('toolTtsTitle') }
+  const titles = {
+    fetch: t('toolFetchTitle'),
+    ocr: t('toolOcrTitle'),
+    asr: t('toolAsrTitle'),
+    tts: t('toolTtsTitle'),
+  }
   const descriptions = {
     fetch: t('toolFetchDescription'),
     ocr: t('toolOcrDescription'),
+    asr: t('toolAsrDescription'),
     tts: t('toolTtsDescription'),
   }
   return (
@@ -50,7 +57,9 @@ export const ToolsPage = ({
       ) : null}
       <h1 className={styles.title}>{titles[tool]}</h1>
       <p className={styles.description}>{descriptions[tool]}</p>
-      {!ready ? (
+      {tool === 'asr' ? (
+        <AsrTool />
+      ) : !ready ? (
         <section className={styles.panel} role="status" aria-live="polite">
           <p className={initError ? styles.error : styles.status}>
             {initError ? t('toolInitFailed') : t('toolInitializing')}

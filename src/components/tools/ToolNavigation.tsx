@@ -21,7 +21,7 @@ export const ToolNavigation = () => {
       >
         Home
       </button>
-      {(['search', 'fetch', 'ocr', 'tts'] as const).map((tool) => (
+      {(['search', 'fetch', 'ocr', 'asr', 'tts'] as const).map((tool) => (
         <button
           key={tool}
           type="button"
@@ -34,6 +34,7 @@ export const ToolNavigation = () => {
                 `tool${tool[0].toUpperCase()}${tool.slice(1)}Title` as
                   | 'toolFetchTitle'
                   | 'toolOcrTitle'
+                  | 'toolAsrTitle'
                   | 'toolTtsTitle'
               )}
         </button>
