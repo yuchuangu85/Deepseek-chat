@@ -1,6 +1,6 @@
 # 历史导入导出
 
-chat-demo 使用 `export_format_version: 3` 的历史会话 ZIP，导出文件名为 `deepseek_data-日期.zip`。字段定义见 [format.ts](./format.ts)，实际校验规则见 [schema.ts](./schema.ts)。
+ds-chat 使用 `export_format_version: 3` 的历史会话 ZIP，导出文件名为 `deepseek_data-日期.zip`。字段定义见 [format.ts](./format.ts)，实际校验规则见 [schema.ts](./schema.ts)。Search、ASR、TTS 历史使用可选的 `tool_history.json` 扩展条目，定义与校验见 [../../toolHistory.ts](../../toolHistory.ts)。
 
 ## 归档结构
 
@@ -8,6 +8,7 @@ chat-demo 使用 `export_format_version: 3` 的历史会话 ZIP，导出文件�
 
 ```text
 manifest.json                                      格式版本，必须是首个条目
+tool_history.json                                  工具历史及记录开关，本应用导出时包含
 chat_sessions/{session_id}.json                    全部会话 JSON（含消息树）
 chat_session_index.json                            会话索引
 chat_sessions/{session_id}_files/{file_id}_{file_name}  全部图片原件
@@ -21,7 +22,8 @@ chat_sessions/{session_id}_files/{file_id}_{file_name}  全部图片原件
 
 1. 用户确认覆盖后，先读取首个条目检查格式与版本；不符合时直接失败，不中止正在生成的回答。
 2. 检查通过后停止生成，导入期间禁止修改会话。逐条解析会话并写入 IndexedDB 暂存区，按 `FILE.is_image` 保留图片身份，再读取图片原件并回填 MIME。图片按文件 ID 去重；字节识别仅补充具体 MIME，无法识别时仍按图片处理。
-3. 校验索引与会话一一对应、消息树和 ZIP 完整性后，在同一个事务中用暂存内容替换全部本地会话与附件。校验或提交失败时保留原有记录；中断遗留的暂存在下次导入前清理。
+3. 校验索引与会话一一对应、消息树和 ZIP 完整性后，在同一个事务中用暂存内容替换全部本地会话与附件。聊天替换成功后清空全部未发送草稿并回到新对话。校验或提交失败时保留原有记录；中断遗留的暂存在下次导入前清理。
+4. 归档包含 `tool_history.json` 时，在聊天替换成功后单独替换 Search、ASR、TTS 历史和记录开关；没有该条目时保留已有工具历史。该条目使用 `tool_history_format_version: 1`，导入校验拒绝未知字段、重复 ID 和无效记录。聊天与工具历史位于不同数据库，**不保证跨库原子替换**；工具历史写入失败时，聊天可能已经替换。因此导入前应先导出备份，并单独保存未发送草稿。
 
 消息树以 `id` / `parent_id` 还原，父消息 ID 必须小于子消息 ID、角色交替、根为提问。`current_message_id` 决定当前分支；其他节点默认选中 ID 最大的子消息。缺失原件的附件保留文件名和大小，不进入后续请求；有原件的导入图片在首次用于请求时上传。
 
@@ -46,7 +48,13 @@ chat_sessions/{session_id}_files/{file_id}_{file_name}  全部图片原件
 
 导出开始时保留列表和已加载会话的内存快照，未打开的会话再逐条从 IndexedDB 读取，不写入界面详情缓存。读取期间会话被删除而无法取得内容时，整次导出失败；导出标题采用开始时的列表快照。
 
-归档不保存 API Key 或应用设置，也不能完整恢复本地运行状态：正文引用角标、非图片附件原件、模型、思考签名、原工具调用 ID、结构化错误信息（类型、状态码及重试操作等）、用量明细、非当前分支的选择，以及 `latestReminder` 快照不会保留。新提问的快照按当前设置生成。
+`tool_history.json` 包含工具历史及 Search、ASR、TTS 的记录开关。Search 只保存查询词；ASR 保存转写文字、原文件名和可用时长，不保存请求 ID；TTS 保存文字和音色。ASR 原始音频、TTS 生成音频和搜索结果不在归档中。
+
+归档不保存未发送草稿、API Key、通用设置或 ASR 页面偏好（上述工具历史记录开关除外），也不能完整恢复本地运行状态：正文引用角标、非图片附件原件、模型、思考签名、原工具调用 ID、结构化错误信息（类型、状态码及重试操作等）、用量明细、非当前分支的选择，以及 `latestReminder` 快照不会保留。新提问的快照按当前设置生成。
+
+## 删除范围
+
+「设置 → 数据管理 → 删除所有对话」只清理聊天、聊天附件原件及未发送草稿，不删除工具历史、API Key 或设置，也不删除 API 服务端文件。工具历史在「设置 → 历史记录」中按类型清理；关闭记录开关不会删除已有记录。删除对话、单条工具历史与批量清理均需确认。
 
 ## 模块与 ZIP 支持
 
