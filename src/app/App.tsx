@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslate } from '../i18n/index.js'
-import { useSettings } from '../services/settings.js'
+import { setSiderCollapsed, useSettings } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
 import {
   bindChatPersistence,
@@ -12,7 +12,6 @@ import {
 import { SearchPanel } from '../components/search/SearchPanel.js'
 import { closeSearchPanel } from '../components/search/searchPanelState.js'
 import { SessionView } from '../components/session/SessionView.js'
-import { MobileHeader } from '../components/session/MobileHeader.js'
 import { Welcome } from '../components/session/Welcome.js'
 import { ensureApiKey } from '../components/settings/settingsDialogState.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
@@ -21,9 +20,15 @@ import { showToast } from '../components/base/toastState.js'
 import { onUploadNotice } from '../services/attachments.js'
 import { Button } from '../components/base/Button.js'
 import { stopReadAloud } from '../services/speech/readAloud.js'
-import { CollapsedSider } from '../components/sider/CollapsedSider.js'
-import { closeMobileSider } from '../components/sider/mobileSiderState.js'
-import { MobileSider, Sider } from '../components/sider/Sider.js'
+import {
+  closeMobileSider,
+  openMobileSider,
+  useMobileSider,
+} from '../components/sider/mobileSiderState.js'
+import { Sider } from '../components/sider/Sider.js'
+import { ToolHistorySidebar } from '../components/toolHistory/ToolHistorySidebar.js'
+import { initToolHistory, type ToolHistoryKind } from '../services/toolHistory.js'
+import { GlobalHeader } from './GlobalHeader.js'
 import { useRoute } from './router.js'
 import { ToolsPage } from '../components/tools/Tools.js'
 import { SearchTool } from '../components/searchTool/SearchTool.js'
@@ -34,8 +39,26 @@ export const App = () => {
   const route = useRoute()
   const isMobile = useIsMobile()
   const locale = useSettings((state) => state.locale)
+  const mobileSiderOpen = useMobileSider((state) => state.open)
+  const toolHistoryKind: ToolHistoryKind | null =
+    route === 'search' || route === 'asr' || route === 'tts' ? route : null
+  const hasHistory = route === 'chat' || toolHistoryKind !== null
   // 移动端侧边栏以独立抽屉管理开合状态
   const siderCollapsed = useSettings((state) => state.siderCollapsed) && !isMobile
+  const [toolCollapsed, setToolCollapsed] = useState<Record<ToolHistoryKind, boolean>>({
+    search: false,
+    asr: false,
+    tts: false,
+  })
+  const historyCollapsed =
+    route === 'chat' ? siderCollapsed : toolHistoryKind !== null && toolCollapsed[toolHistoryKind]
+  const setHistoryCollapsed = (collapsed: boolean) => {
+    if (route === 'chat') {
+      setSiderCollapsed(collapsed)
+    } else if (toolHistoryKind) {
+      setToolCollapsed((current) => ({ ...current, [toolHistoryKind]: collapsed }))
+    }
+  }
   const ready = useChatStore((state) => state.ready)
   const initError = useChatStore((state) => state.initError)
   const saveError = useChatStore((state) => Object.values(state.sessionSaveErrors).some(Boolean))
@@ -69,10 +92,11 @@ export const App = () => {
   // 切换会话时停止朗读
   useEffect(stopReadAloud, [activeId])
   // 移动端选中会话、切换布局后收起抽屉
-  useEffect(closeMobileSider, [activeId, isMobile])
+  useEffect(closeMobileSider, [activeId, isMobile, route])
 
   useEffect(() => {
     void initChat()
+    void initToolHistory()
     // 首次打开先在设置里输入 API Key
     ensureApiKey()
   }, [])
@@ -80,79 +104,106 @@ export const App = () => {
   return (
     <>
       <div ref={frameRef} className={styles.frame}>
-        {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
-        <main className={styles.main}>
-          {saveError ? (
-            <div className={styles.saveError} role="alert">
-              <span>{t('sessionSaveFailed')}</span>
-              <Button
-                variant="outlined"
-                size="s"
-                disabled={importingHistory}
-                onClick={retrySaveSessions}
-              >
-                {t('retry')}
-              </Button>
-            </div>
+        <GlobalHeader
+          mobile={isMobile}
+          canOpenHistory={hasHistory && (isMobile || historyCollapsed)}
+          onOpenHistory={() => (isMobile ? openMobileSider() : setHistoryCollapsed(false))}
+        />
+        <div className={styles.workspace}>
+          {isMobile && mobileSiderOpen && hasHistory ? (
+            <>
+              <div className={styles.drawerMask} onClick={closeMobileSider} />
+              <div className={styles.drawer}>
+                {route === 'chat' ? (
+                  <Sider mobile />
+                ) : toolHistoryKind ? (
+                  <ToolHistorySidebar
+                    key={toolHistoryKind}
+                    kind={toolHistoryKind}
+                    mobile
+                    onClose={closeMobileSider}
+                    onSelect={closeMobileSider}
+                  />
+                ) : null}
+              </div>
+            </>
+          ) : !isMobile && !historyCollapsed ? (
+            route === 'chat' ? (
+              <Sider />
+            ) : toolHistoryKind ? (
+              <ToolHistorySidebar
+                key={toolHistoryKind}
+                kind={toolHistoryKind}
+                onClose={() => setHistoryCollapsed(true)}
+              />
+            ) : null
           ) : null}
-          <div className={styles.content}>
-            {route !== 'chat' ? (
-              <>
-                {siderCollapsed ? <CollapsedSider /> : null}
-                {route === 'search' ? (
-                  <SearchTool />
-                ) : (
-                  <ToolsPage
-                    tool={route}
-                    ready={ready}
-                    initError={initError}
-                    onRetry={() => void initChat()}
-                  />
-                )}
-              </>
-            ) : (
-              <>
-                {siderCollapsed ? <CollapsedSider /> : null}
-                {!ready || (activeId !== null && !session) ? (
-                  <div className={styles.loadingView}>
-                    {isMobile ? <MobileHeader /> : null}
-                    <div className={styles.loadingState} role="status" aria-live="polite">
-                      <span>
-                        {(!ready ? initError : sessionLoadError)
-                          ? t(!ready ? 'sessionListLoadFailed' : 'sessionLoadFailed')
-                          : t('sessionLoading')}
-                      </span>
-                      {(!ready ? initError : sessionLoadError) ? (
-                        <Button
-                          variant="outlined"
-                          size="m"
-                          onClick={() => {
-                            if (!ready) {
-                              void initChat()
-                            } else if (activeId !== null) {
-                              selectSession(activeId)
-                            }
-                          }}
-                        >
-                          {t('retry')}
-                        </Button>
-                      ) : null}
+          <main className={styles.main}>
+            {saveError ? (
+              <div className={styles.saveError} role="alert">
+                <span>{t('sessionSaveFailed')}</span>
+                <Button
+                  variant="outlined"
+                  size="s"
+                  disabled={importingHistory}
+                  onClick={retrySaveSessions}
+                >
+                  {t('retry')}
+                </Button>
+              </div>
+            ) : null}
+            <div className={styles.content}>
+              {route !== 'chat' ? (
+                <>
+                  {route === 'search' ? (
+                    <SearchTool />
+                  ) : (
+                    <ToolsPage
+                      tool={route}
+                      ready={ready}
+                      initError={initError}
+                      onRetry={() => void initChat()}
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  {!ready || (activeId !== null && !session) ? (
+                    <div className={styles.loadingView}>
+                      <div className={styles.loadingState} role="status" aria-live="polite">
+                        <span>
+                          {(!ready ? initError : sessionLoadError)
+                            ? t(!ready ? 'sessionListLoadFailed' : 'sessionLoadFailed')
+                            : t('sessionLoading')}
+                        </span>
+                        {(!ready ? initError : sessionLoadError) ? (
+                          <Button
+                            variant="outlined"
+                            size="m"
+                            onClick={() => {
+                              if (!ready) {
+                                void initChat()
+                              } else if (activeId !== null) {
+                                selectSession(activeId)
+                              }
+                            }}
+                          >
+                            {t('retry')}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                ) : session ? (
-                  <SessionView
-                    session={session}
-                    streaming={streaming}
-                    siderCollapsed={siderCollapsed}
-                  />
-                ) : (
-                  <Welcome />
-                )}
-              </>
-            )}
-          </div>
-        </main>
-        <SearchPanel />
+                  ) : session ? (
+                    <SessionView session={session} streaming={streaming} />
+                  ) : (
+                    <Welcome />
+                  )}
+                </>
+              )}
+            </div>
+          </main>
+          {route === 'chat' ? <SearchPanel /> : null}
+        </div>
       </div>
       <SettingsDialog />
       <Toast />

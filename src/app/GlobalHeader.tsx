@@ -1,0 +1,49 @@
+import { useTranslate } from '../i18n/index.js'
+import { IconButton } from '../components/base/IconButton.js'
+import {
+  IconMenuOutline20,
+  IconPanelLeftOutline16,
+  IconSettingsOutline16,
+} from '../components/base/icons.js'
+import { openSettings } from '../components/settings/settingsDialogState.js'
+import { ToolNavigation } from '../components/tools/ToolNavigation.js'
+import styles from './GlobalHeader.module.css'
+
+export const GlobalHeader = ({
+  mobile,
+  canOpenHistory,
+  onOpenHistory,
+}: {
+  mobile: boolean
+  canOpenHistory: boolean
+  onOpenHistory: () => void
+}) => {
+  const t = useTranslate()
+  return (
+    <header className={styles.header}>
+      <div className={styles.left}>
+        {canOpenHistory ? (
+          <IconButton
+            size={mobile ? 'xl' : 'm'}
+            tone="primary"
+            icon={mobile ? <IconMenuOutline20 /> : <IconPanelLeftOutline16 />}
+            tooltip={t('expandSiderbarButton')}
+            onClick={onOpenHistory}
+          />
+        ) : null}
+      </div>
+      <div className={styles.navigation}>
+        <ToolNavigation />
+      </div>
+      <div className={styles.right}>
+        <IconButton
+          size={mobile ? 'xl' : 'm'}
+          tone="primary"
+          icon={<IconSettingsOutline16 />}
+          tooltip={t('settings')}
+          onClick={() => openSettings('general')}
+        />
+      </div>
+    </header>
+  )
+}

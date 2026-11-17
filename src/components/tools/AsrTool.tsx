@@ -6,6 +6,11 @@ import {
   useAsrSettings,
   type AsrFileFilter,
 } from '../../services/asrSettings.js'
+import {
+  addToolHistory,
+  captureToolHistoryPermit,
+  useToolHistory,
+} from '../../services/toolHistory.js'
 import { classifyApiError } from '../../services/api/errors.js'
 import { useSettings } from '../../services/settings.js'
 import {
@@ -61,6 +66,9 @@ export const AsrTool = () => {
   const [result, setResult] = useState<TranscriptionResult | null>(null)
   const [languagesOpen, setLanguagesOpen] = useState(false)
   const [downloadFormat, setDownloadFormat] = useState<TranscriptFormat>('txt')
+  const [resultSourceName, setResultSourceName] = useState<string | null>(null)
+  const selectedHistory = useToolHistory((state) => state.selection)
+  const handledSelection = useRef(selectedHistory?.sequence ?? 0)
 
   const cancel = () => {
     operationRef.current += 1
@@ -76,10 +84,32 @@ export const AsrTool = () => {
     },
     []
   )
+  useEffect(() => {
+    if (!selectedHistory || selectedHistory.sequence === handledSelection.current) {
+      return
+    }
+    handledSelection.current = selectedHistory.sequence
+    if (selectedHistory.entry.kind !== 'asr') {
+      return
+    }
+    operationRef.current += 1
+    controllerRef.current?.abort()
+    controllerRef.current = null
+    setLoading(false)
+    setError(null)
+    setFile(null)
+    setResultSourceName(selectedHistory.entry.fileName)
+    setResult({
+      text: selectedHistory.entry.text,
+      durationMs: selectedHistory.entry.durationMs,
+      requestId: null,
+    })
+  }, [selectedHistory])
 
   const selectFile = (selected: File) => {
     cancel()
     setResult(null)
+    setResultSourceName(null)
     setFile(null)
     if (selected.size === 0) {
       setError('toolAsrEmptyFile')
@@ -102,6 +132,7 @@ export const AsrTool = () => {
     setError(null)
     setResult(null)
     try {
+      const historyPermit = await captureToolHistoryPermit('asr')
       const response = await transcribeWithDetails(
         useSettings.getState().apiKey ?? '',
         file,
@@ -109,6 +140,26 @@ export const AsrTool = () => {
       )
       if (!controller.signal.aborted && operation === operationRef.current) {
         setResult(response)
+        setResultSourceName(file.name)
+        if (response.text.trim()) {
+          if (historyPermit.status === 'error') {
+            showToast({ key: 'toolHistorySaveFailed' })
+          } else if (historyPermit.status === 'ready') {
+            void addToolHistory(
+              {
+                kind: 'asr',
+                text: response.text,
+                fileName: file.name,
+                durationMs: response.durationMs,
+              },
+              historyPermit.permit
+            ).then((saved) => {
+              if (saved === 'error') {
+                showToast({ key: 'toolHistorySaveFailed' })
+              }
+            })
+          }
+        }
       }
     } catch (cause) {
       if (!controller.signal.aborted && operation === operationRef.current) {
@@ -123,12 +174,16 @@ export const AsrTool = () => {
   }
 
   const downloadTranscript = () => {
-    if (!file || !result || !result.text.trim()) {
+    if (!result || !result.text.trim()) {
       return
     }
     let objectUrl: string | undefined
     try {
-      const { blob, name } = createTranscriptExport(result.text, file.name, downloadFormat)
+      const { blob, name } = createTranscriptExport(
+        result.text,
+        resultSourceName ?? 'asr',
+        downloadFormat
+      )
       objectUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = objectUrl

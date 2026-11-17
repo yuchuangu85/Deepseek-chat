@@ -184,15 +184,15 @@ const persist = (sessionId: string) => {
   if (session) {
     unsavedSessions.add(sessionId)
     if (deletingSessions.has(sessionId)) {
-      return
+      return Promise.resolve(false)
     }
     const epoch = historyEpoch
     const files = pendingFiles.get(sessionId)
-    void db
+    return db
       .saveSession(session, files)
       .then(() => {
         if (epoch !== historyEpoch || !getSession(sessionId)) {
-          return
+          return false
         }
         if (pendingFiles.get(sessionId) === files) {
           pendingFiles.delete(sessionId)
@@ -206,6 +206,7 @@ const persist = (sessionId: string) => {
           }))
           trimSessionCache()
         }
+        return true
       })
       .catch((error: unknown) => {
         db.reportStorageError('save session')(error)
@@ -214,8 +215,10 @@ const persist = (sessionId: string) => {
             sessionSaveErrors: { ...state.sessionSaveErrors, [sessionId]: true },
           }))
         }
+        return false
       })
   }
+  return Promise.resolve(false)
 }
 
 export const retrySaveSessions = () => {
@@ -541,15 +544,18 @@ const removeSessionData = async (id: string): Promise<boolean> => {
 
 export const stopReply = (sessionId: string) => getStreamController(sessionId)?.abort()
 
-/**
- * 提交指定会话的最新草稿；null 表示新建会话。
- * 同步接收成功才清空草稿，附件原件由会话接管；保存失败仍通过保存入口重试。
- */
-export const sendMessage = (targetSessionId: string | null) => {
+const pendingNewDrafts = new Set<string>()
+
+const submitDraft = (
+  targetSessionId: string | null,
+  draftKey: string | null,
+  isolated: boolean
+) => {
   if (get().importingHistory || !get().ready) {
     return false
   }
-  const prepared = prepareDraftMessage(getDraft(targetSessionId), useUploads.getState().tasks)
+  const draft = getDraft(draftKey)
+  const prepared = prepareDraftMessage(draft, useUploads.getState().tasks)
   if (!prepared) {
     return false
   }
@@ -609,10 +615,45 @@ export const sendMessage = (targetSessionId: string | null) => {
       ...files.map(({ id, blob }) => ({ id, blob })),
     ])
   }
-  persist(sessionId)
-  clearSentDraft(targetSessionId)
-  void streamReply(sessionId, reply, { history, question })
+  const saved = persist(sessionId)
+  if (!isolated) {
+    clearSentDraft(draftKey)
+  }
+  const streamed = streamReply(sessionId, reply, { history, question })
+  if (isolated && draftKey !== null) {
+    const epoch = historyEpoch
+    void Promise.all([saved, streamed])
+      .then(([initialSaved, result]) => {
+        if (initialSaved && result && epoch === historyEpoch && getDraft(draftKey) === draft) {
+          clearSentDraft(draftKey)
+        }
+      })
+      .finally(() => pendingNewDrafts.delete(draftKey))
+      .catch(() => {})
+  }
   return true
+}
+
+/** 同步接收成功后清理会话草稿，保存失败由会话的保存入口重试。 */
+export const sendMessage = (targetSessionId: string | null) =>
+  submitDraft(targetSessionId, targetSessionId, false)
+
+/** 接收独立草稿并新建会话；失败或草稿被修改时保留草稿。 */
+export const sendNewMessageFromDraft = (draftKey: string): boolean => {
+  if (
+    typeof draftKey !== 'string' ||
+    !draftKey ||
+    pendingNewDrafts.has(draftKey) ||
+    get().sessions.some((session) => session.id === draftKey)
+  ) {
+    return false
+  }
+  pendingNewDrafts.add(draftKey)
+  const accepted = submitDraft(null, draftKey, true)
+  if (!accepted) {
+    pendingNewDrafts.delete(draftKey)
+  }
+  return accepted
 }
 
 /** 重新生成当前路径上的回答：在原问题下新增版本，不覆盖旧回答和后续对话。 */
@@ -966,6 +1007,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
   }
   set((state) => ({ streaming: { ...state.streaming, [sessionId]: controller } }))
   let reply = initial
+  let saved = false
   let frame = 0
   const flush = () => {
     cancelAnimationFrame(frame)
@@ -1089,6 +1131,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         Object.entries(state.streaming).filter(([id]) => id !== sessionId)
       ),
     }))
-    persist(sessionId)
+    saved = await persist(sessionId)
   }
+  return reply.status === 'done' && saved
 }

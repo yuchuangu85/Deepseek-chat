@@ -33,7 +33,9 @@ pnpm build
 - 流式回答、深度思考、智能搜索、链接阅读与来源引用；支持停止和符合条件的继续生成。
 - 附件上传、粘贴与拖拽，语音输入和回复朗读；移动端录音时输入框首行显示实时频谱。
 - 独立网页搜索，支持搜索操作符、结果摘要和分页。
+- Search、ASR、TTS 分别保存本地历史；Fetch、OCR 仍由聊天历史承载。选择历史只恢复输入，不会自动发起可能计费的请求。
 - 独立 ASR 支持上传 16 位 PCM WAV 或 Ogg Opus 音频转写，最大 8 MiB、最长 120 秒；双声道音频只识别左声道。转写文字可下载为 TXT、Markdown 或 JSON。
+- TTS 工具支持合成并下载 WAV 音频，本地下载上限为 128 MiB。
 - Markdown、代码高亮、KaTeX 公式和 Mermaid 图表。
 - 简体中文与英文、浅色与深色主题、移动端布局、位置设置、历史导入导出。
 
@@ -45,20 +47,25 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 
 ASR 页面仅在本地保存文件选择器筛选及结果详情显示偏好；筛选不会转换或校验音频，格式和时长由服务端检查。ASR 自动识别语言，请求中不发送语言、采样率或声道设置。
 
+首次 TTS 下载会单独请求合成，可能产生接口费用。生成的音频仅在 TTS 页面内暂存于内存以供再次下载；修改文字或音色后会清除。
+
 设置中的历史导入导出使用 ZIP 格式。导入会在确认并校验成功后替换全部本地会话和附件；导出包含会话与本地可用的图片原件，不包含 API Key、设置或非图片附件原件。格式与保留范围见[历史导入导出](src/services/chat/history/README.md)。
 
 设置 → 数据管理 → 删除所有对话，会在确认后清空全部本地会话、附件原件和未发送的草稿，停止正在生成的回复并回到新对话。API Key 和其他设置保留，已上传到 API 服务的文件不受影响。
 
 ## 开发
 
-| 命令            | 用途                |
-| --------------- | ------------------- |
-| `pnpm dev`      | 启动开发服务器      |
-| `pnpm build`    | 构建到 `dist/`      |
-| `pnpm type`     | TypeScript 类型检查 |
-| `pnpm lint`     | oxlint 检查         |
-| `pnpm test:asr` | ASR 客户端测试      |
-| `pnpm format`   | oxfmt 格式化        |
+| 命令                     | 用途                |
+| ------------------------ | ------------------- |
+| `pnpm dev`               | 启动开发服务器      |
+| `pnpm build`             | 构建到 `dist/`      |
+| `pnpm type`              | TypeScript 类型检查 |
+| `pnpm lint`              | oxlint 检查         |
+| `pnpm test:asr`          | ASR 客户端测试      |
+| `pnpm test:tool-history` | 工具历史测试        |
+| `pnpm test:chat-drafts`  | 工具草稿隔离测试    |
+| `pnpm test:tts`          | TTS 下载测试        |
+| `pnpm format`            | oxfmt 格式化        |
 
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 

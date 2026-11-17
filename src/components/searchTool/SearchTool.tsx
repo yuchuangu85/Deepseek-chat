@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { useIsMobile } from '../../app/viewport.js'
 import { useSettings } from '../../services/settings.js'
 import { SearchApiError, searchWeb, type SearchResult } from '../../services/api/search.js'
+import {
+  addToolHistory,
+  captureToolHistoryPermit,
+  useToolHistory,
+} from '../../services/toolHistory.js'
+import { showToast } from '../base/toastState.js'
 import { copyText } from '../../utils/clipboard.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
-import { MobileHeader } from '../session/MobileHeader.js'
-import { ToolNavigation } from '../tools/ToolNavigation.js'
 import { IconCloseFill14, IconCopyOutline16, IconSearchOutline16 } from '../base/icons.js'
 import styles from './SearchTool.module.css'
 
@@ -204,7 +207,6 @@ const Result = ({ result, index }: { result: SearchResult; index: number }) => {
 }
 
 export const SearchTool = () => {
-  const isMobile = useIsMobile()
   const locale = useSettings((state) => state.locale)
   const apiKey = useSettings((state) => state.apiKey)
   const m = messages[locale]
@@ -220,6 +222,8 @@ export const SearchTool = () => {
   const inputRef = useRef<HTMLInputElement>(null)
   const controllerRef = useRef<AbortController | null>(null)
   const requestId = useRef(0)
+  const selectedHistory = useToolHistory((state) => state.selection)
+  const handledSelection = useRef(selectedHistory?.sequence ?? 0)
   const pages = Math.max(1, Math.ceil(results.length / PAGE_SIZE))
 
   useEffect(
@@ -229,6 +233,25 @@ export const SearchTool = () => {
     },
     []
   )
+  useEffect(() => {
+    if (!selectedHistory || selectedHistory.sequence === handledSelection.current) {
+      return
+    }
+    handledSelection.current = selectedHistory.sequence
+    if (selectedHistory.entry.kind !== 'search') {
+      return
+    }
+    requestId.current += 1
+    controllerRef.current?.abort()
+    controllerRef.current = null
+    setInput(selectedHistory.entry.query)
+    setQuery('')
+    setResults([])
+    setPage(1)
+    setStatus('idle')
+    setError('')
+    inputRef.current?.focus({ preventScroll: true })
+  }, [selectedHistory])
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -264,6 +287,13 @@ export const SearchTool = () => {
     const controller = new AbortController()
     controllerRef.current = controller
     const id = ++requestId.current
+    const historyPermit = await captureToolHistoryPermit('search')
+    if (controller.signal.aborted || id !== requestId.current) {
+      if (controllerRef.current === controller) {
+        controllerRef.current = null
+      }
+      return
+    }
     let timedOut = false
     const timer = window.setTimeout(() => {
       timedOut = true
@@ -284,6 +314,17 @@ export const SearchTool = () => {
       setResults(found)
       setElapsed(Math.round(performance.now() - started))
       setStatus('success')
+      if (historyPermit.status === 'error') {
+        showToast({ key: 'toolHistorySaveFailed' })
+      } else if (historyPermit.status === 'ready') {
+        void addToolHistory({ kind: 'search', query: value }, historyPermit.permit).then(
+          (saved) => {
+            if (saved === 'error') {
+              showToast({ key: 'toolHistorySaveFailed' })
+            }
+          }
+        )
+      }
     } catch (cause) {
       if (id !== requestId.current || (controller.signal.aborted && !timedOut)) {
         return
@@ -342,13 +383,6 @@ export const SearchTool = () => {
 
   return (
     <div className={styles.page}>
-      {isMobile ? (
-        <MobileHeader />
-      ) : (
-        <header className={styles.header}>
-          <ToolNavigation />
-        </header>
-      )}
       <main className={styles.main}>
         <section className={`${styles.hero} ${status !== 'idle' ? styles.compact : ''}`}>
           <h1>{m.title}</h1>

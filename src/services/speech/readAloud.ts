@@ -80,7 +80,8 @@ export const describeReadAloudError = (error: unknown): TranslationMessage | str
 export const toggleReadAloud = (
   messageId: string,
   text: string,
-  onError: (error: unknown) => void
+  onError: (error: unknown) => void,
+  onComplete?: () => void
 ) => {
   const reading = useReadAloud.getState().messageId
   stopReadAloud()
@@ -98,6 +99,7 @@ export const toggleReadAloud = (
     let nextTime = 0
     let lastSource: AudioBufferSourceNode | null = null
     let rest = new Uint8Array(0)
+    let receivedSamples = false
     try {
       const stream = await synthesize(apiKey ?? '', text, ttsVoice, controller.signal)
       const reader = stream.getReader()
@@ -115,6 +117,7 @@ export const toggleReadAloud = (
         if (samples.length === 0) {
           continue
         }
+        receivedSamples = true
         const buffer = context.createBuffer(1, samples.length, TTS_SAMPLE_RATE)
         buffer.copyToChannel(samples, 0)
         const source = context.createBufferSource()
@@ -128,6 +131,9 @@ export const toggleReadAloud = (
         if (useReadAloud.getState().status === 'loading') {
           useReadAloud.setState({ status: 'playing' })
         }
+      }
+      if (!controller.signal.aborted && current?.controller === controller && receivedSamples) {
+        onComplete?.()
       }
       if (lastSource) {
         lastSource.onended = () => finish(controller)

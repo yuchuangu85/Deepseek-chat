@@ -1,23 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import { useSettings } from '../../services/settings.js'
+import { setTtsVoice, useSettings } from '../../services/settings.js'
+import {
+  addToolHistory,
+  captureToolHistoryPermit,
+  useToolHistory,
+} from '../../services/toolHistory.js'
+import type { TtsVoice } from '../../services/api/speech.js'
 import { navigate } from '../../app/router.js'
-import { useIsMobile } from '../../app/viewport.js'
-import { MobileHeader } from '../session/MobileHeader.js'
-import { ToolNavigation } from './ToolNavigation.js'
 import { Button } from '../base/Button.js'
-import { IconLinkOutline14, IconPaperclipOutline16, IconPlayMediaOutline16 } from '../base/icons.js'
+import {
+  IconDownloadOutline16,
+  IconLinkOutline14,
+  IconPaperclipOutline16,
+  IconPlayMediaOutline16,
+} from '../base/icons.js'
 import {
   describeReadAloudError,
   toggleReadAloud,
   stopReadAloud,
   useReadAloud,
 } from '../../services/speech/readAloud.js'
+import { synthesizeWavDownload } from '../../services/speech/ttsDownload.js'
 import { showToast } from '../base/toastState.js'
 import { ReadingBars } from '../messages/ReadingBars.js'
-import { ACCEPT, useUploads } from '../../services/attachments.js'
-import { addDraftFiles, clearDraft, getDraft, setDraftText } from '../../services/chat/drafts.js'
-import { sendMessage } from '../../services/chat/store.js'
+import { ACCEPT, useUploads, validateFiles } from '../../services/attachments.js'
+import { addDraftFiles, clearDraft, setDraftText, useDrafts } from '../../services/chat/drafts.js'
+import { sendNewMessageFromDraft } from '../../services/chat/store.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
 import { AsrTool } from './AsrTool.js'
 import styles from './Tools.module.css'
@@ -34,7 +43,6 @@ export const ToolsPage = ({
   onRetry: () => void
 }) => {
   const t = useTranslate()
-  const isMobile = useIsMobile()
   const titles = {
     fetch: t('toolFetchTitle'),
     ocr: t('toolOcrTitle'),
@@ -49,12 +57,6 @@ export const ToolsPage = ({
   }
   return (
     <div className={styles.page}>
-      {isMobile ? <MobileHeader /> : null}
-      {!isMobile ? (
-        <header className={styles.header}>
-          <ToolNavigation />
-        </header>
-      ) : null}
       <h1 className={styles.title}>{titles[tool]}</h1>
       <p className={styles.description}>{descriptions[tool]}</p>
       {tool === 'asr' ? (
@@ -81,6 +83,9 @@ export const ToolsPage = ({
   )
 }
 
+const FETCH_DRAFT_KEY = 'tool:fetch'
+const OCR_DRAFT_KEY = 'tool:ocr'
+
 const isHttpUrl = (value: string) => {
   try {
     const parsed = new URL(value)
@@ -102,9 +107,8 @@ const FetchTool = () => {
     if (!ensureApiKey()) {
       return
     }
-    clearDraft(null)
-    setDraftText(null, `${t('toolFetchPrompt')}\n${value}`)
-    if (sendMessage(null)) {
+    setDraftText(FETCH_DRAFT_KEY, `${t('toolFetchPrompt')}\n${value}`)
+    if (sendNewMessageFromDraft(FETCH_DRAFT_KEY)) {
       navigate('chat')
     }
   }
@@ -147,24 +151,24 @@ const FetchTool = () => {
 const OcrTool = () => {
   const t = useTranslate()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [file, setFile] = useState<File | null>(null)
-  const [uploadId, setUploadId] = useState<string | null>(null)
+  const attachment = useDrafts((state) => state.drafts.get(OCR_DRAFT_KEY)?.attachments[0])
+  const file = attachment?.file ?? null
+  const uploadId = attachment?.id ?? null
   const [busy, setBusy] = useState(false)
-  const accept = async (selected: File) => {
+  const accept = (selected: File) => {
     if (!ensureApiKey()) {
       return
     }
-    const previousIds = new Set(getDraft(null).attachments.map((attachment) => attachment.id))
-    clearDraft(null)
-    setFile(selected)
-    const error = addDraftFiles(null, [selected], useSettings.getState().apiKey ?? '')
-    if (error) {
-      showToast(error)
-      setFile(null)
+    const validationError = validateFiles([selected], 0)
+    if (validationError) {
+      showToast(validationError)
       return
     }
-    const attachment = getDraft(null).attachments.find((item) => !previousIds.has(item.id))
-    setUploadId(attachment?.id ?? null)
+    clearDraft(OCR_DRAFT_KEY)
+    const error = addDraftFiles(OCR_DRAFT_KEY, [selected], useSettings.getState().apiKey ?? '')
+    if (error) {
+      showToast(error)
+    }
   }
   const submit = () => {
     if (!file || !uploadId || busy) {
@@ -174,9 +178,9 @@ const OcrTool = () => {
     if (task?.status !== 'done') {
       return
     }
-    setDraftText(null, t('toolOcrPrompt'))
+    setDraftText(OCR_DRAFT_KEY, t('toolOcrPrompt'))
     setBusy(true)
-    if (sendMessage(null)) {
+    if (sendNewMessageFromDraft(OCR_DRAFT_KEY)) {
       navigate('chat')
     } else {
       setBusy(false)
@@ -195,7 +199,7 @@ const OcrTool = () => {
           const selected = event.target.files?.[0]
           event.target.value = ''
           if (selected) {
-            void accept(selected)
+            accept(selected)
           }
         }}
       />
@@ -224,14 +228,180 @@ const TtsTool = () => {
   const t = useTranslate()
   const [text, setText] = useState('')
   const [messageId] = useState(() => `tts-tool-${Date.now()}`)
+  const [downloading, setDownloading] = useState(false)
+  const [audioReady, setAudioReady] = useState(false)
+  const selectedHistory = useToolHistory((state) => state.selection)
+  const handledSelection = useRef(selectedHistory?.sequence ?? 0)
+  const downloadRef = useRef<AbortController | null>(null)
+  const audioCacheRef = useRef<{ text: string; voice: TtsVoice; blob: Blob } | null>(null)
+  const operationRef = useRef(0)
   const status = useReadAloud((state) => (state.messageId === messageId ? state.status : 'idle'))
-  useEffect(() => () => stopReadAloud(), [])
+  useEffect(() => {
+    const unsubscribe = useSettings.subscribe((next, previous) => {
+      if (next.ttsVoice !== previous.ttsVoice) {
+        audioCacheRef.current = null
+        setAudioReady(false)
+        if (downloadRef.current) {
+          operationRef.current += 1
+          downloadRef.current.abort()
+          downloadRef.current = null
+          setDownloading(false)
+        }
+      }
+    })
+    return () => {
+      unsubscribe()
+      operationRef.current += 1
+      downloadRef.current?.abort()
+      audioCacheRef.current = null
+      stopReadAloud()
+    }
+  }, [])
+
+  const cancelDownload = () => {
+    operationRef.current += 1
+    downloadRef.current?.abort()
+    downloadRef.current = null
+    setDownloading(false)
+  }
+
   const play = () => {
-    if (!text.trim()) {
+    if (downloadRef.current) {
       return
     }
-    toggleReadAloud(messageId, text.trim(), (error) => showToast(describeReadAloudError(error)))
+    const playing = useReadAloud.getState().messageId === messageId
+    if (!playing && (!text.trim() || !ensureApiKey())) {
+      return
+    }
+    const value = text.trim()
+    const voice = useSettings.getState().ttsVoice
+    const historyPermitPromise = captureToolHistoryPermit('tts')
+    toggleReadAloud(
+      messageId,
+      value,
+      (error) => showToast(describeReadAloudError(error)),
+      () => {
+        void historyPermitPromise.then((permit) => {
+          if (permit.status === 'error') {
+            showToast({ key: 'toolHistorySaveFailed' })
+          } else if (permit.status === 'ready') {
+            return addToolHistory({ kind: 'tts', text: value, voice }, permit.permit).then(
+              (saved) => {
+                if (saved === 'error') {
+                  showToast({ key: 'toolHistorySaveFailed' })
+                }
+              }
+            )
+          }
+          return undefined
+        })
+      }
+    )
   }
+
+  useEffect(() => {
+    if (!selectedHistory || selectedHistory.sequence === handledSelection.current) {
+      return
+    }
+    handledSelection.current = selectedHistory.sequence
+    if (selectedHistory.entry.kind !== 'tts') {
+      return
+    }
+    operationRef.current += 1
+    downloadRef.current?.abort()
+    downloadRef.current = null
+    audioCacheRef.current = null
+    setDownloading(false)
+    setAudioReady(false)
+    if (useReadAloud.getState().messageId === messageId) {
+      stopReadAloud()
+    }
+    setText(selectedHistory.entry.text)
+    setTtsVoice(selectedHistory.entry.voice)
+  }, [selectedHistory, messageId])
+
+  const saveWav = (blob: Blob) => {
+    let objectUrl: string | undefined
+    try {
+      objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = 'deepseek-tts.wav'
+      document.body.appendChild(link)
+      try {
+        link.click()
+      } finally {
+        link.remove()
+      }
+      const url = objectUrl
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
+      showToast({ key: 'toolTtsDownloadFailed' })
+    }
+  }
+
+  const download = async () => {
+    if (downloadRef.current) {
+      cancelDownload()
+      return
+    }
+    const value = text.trim()
+    if (!value || useReadAloud.getState().messageId === messageId) {
+      return
+    }
+    const { apiKey, ttsVoice } = useSettings.getState()
+    const cached = audioCacheRef.current
+    if (cached && cached.text === value && cached.voice === ttsVoice) {
+      saveWav(cached.blob)
+      return
+    }
+    if (!ensureApiKey()) {
+      cancelDownload()
+      return
+    }
+    const controller = new AbortController()
+    const operation = ++operationRef.current
+    downloadRef.current = controller
+    setDownloading(true)
+    try {
+      const blob = await synthesizeWavDownload(apiKey ?? '', value, ttsVoice, controller.signal)
+      const historyPermit = await captureToolHistoryPermit('tts')
+      if (controller.signal.aborted || operation !== operationRef.current) {
+        cancelDownload()
+      }
+      if (controller.signal.aborted || operation !== operationRef.current) {
+        return
+      }
+      audioCacheRef.current = { text: value, voice: ttsVoice, blob }
+      setAudioReady(true)
+      if (historyPermit.status === 'error') {
+        showToast({ key: 'toolHistorySaveFailed' })
+      } else if (historyPermit.status === 'ready') {
+        void addToolHistory(
+          { kind: 'tts', text: value, voice: ttsVoice },
+          historyPermit.permit
+        ).then((saved) => {
+          if (saved === 'error') {
+            showToast({ key: 'toolHistorySaveFailed' })
+          }
+        })
+      }
+      saveWav(blob)
+    } catch (error) {
+      if (!controller.signal.aborted && operation === operationRef.current) {
+        showToast(describeReadAloudError(error))
+      }
+    } finally {
+      if (operation === operationRef.current) {
+        downloadRef.current = null
+        setDownloading(false)
+      }
+    }
+  }
+
   return (
     <section className={styles.panel}>
       <label className={styles.label} htmlFor="tts-text">
@@ -242,13 +412,42 @@ const TtsTool = () => {
         className={styles.textarea}
         value={text}
         placeholder={t('toolTtsPlaceholder')}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          if (downloadRef.current) {
+            cancelDownload()
+          }
+          audioCacheRef.current = null
+          setAudioReady(false)
+          setText(event.target.value)
+        }}
         rows={7}
       />
-      <Button onClick={play} disabled={!text.trim()}>
-        {status === 'idle' ? <IconPlayMediaOutline16 /> : <ReadingBars mode={status} />}
-        {status === 'idle' ? t('ttsPlay') : t('ttsStop')}
-      </Button>
+      <div className={styles.ttsActions}>
+        <Button onClick={play} disabled={downloading || (status === 'idle' && !text.trim())}>
+          {status === 'idle' ? <IconPlayMediaOutline16 /> : <ReadingBars mode={status} />}
+          {status === 'idle' ? t('ttsPlay') : t('ttsStop')}
+        </Button>
+        <Button
+          variant="outlined"
+          className={styles.ttsDownloadButton}
+          onClick={() => void download()}
+          disabled={status !== 'idle' || (!downloading && !text.trim())}
+        >
+          {downloading ? null : <IconDownloadOutline16 />}
+          {t(downloading ? 'toolTtsCancelDownload' : 'toolTtsDownload')}
+        </Button>
+      </div>
+      {downloading ? (
+        <p className={styles.status} role="status">
+          {t('toolTtsDownloading')}
+        </p>
+      ) : null}
+      {audioReady && !downloading ? (
+        <p className={styles.status} role="status">
+          {t('toolTtsDownloadReady')}
+        </p>
+      ) : null}
+      <p className={styles.ttsDownloadNote}>{t('toolTtsDownloadNote')}</p>
     </section>
   )
 }
