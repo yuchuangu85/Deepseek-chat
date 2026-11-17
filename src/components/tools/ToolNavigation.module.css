@@ -1,0 +1,47 @@
+.navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.navigation button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.navigation button:hover,
+.navigation button[aria-current='page'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.navigation button:focus-visible {
+  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline-offset: 2px;
+}
+
+.navigation button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media not all and (min-width: 768px) {
+  .navigation {
+    gap: 0;
+  }
+
+  .navigation button {
+    min-height: 32px;
+    padding: 0 5px;
+    font-size: 13px;
+  }
+}

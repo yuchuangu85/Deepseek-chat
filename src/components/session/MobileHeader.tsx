@@ -3,20 +3,22 @@ import { useTranslate } from '../../i18n/index.js'
 import { newChat } from '../../services/chat/store.js'
 import { IconButton } from '../base/IconButton.js'
 import { openMobileSider } from '../sider/mobileSiderState.js'
+import { ToolNavigation } from '../tools/ToolNavigation.js'
 import styles from './MobileHeader.module.css'
 
 /** 移动端顶栏：左侧菜单打开侧边栏；会话页再显示标题与开启新对话 */
-export const MobileHeader = ({ title }: { title?: string }) => {
+export const MobileHeader = ({ title, onMenu }: { title?: string; onMenu?: () => void }) => {
   const t = useTranslate()
   return (
-    <div className={styles.header}>
+    <div className={`${styles.header} ${title === undefined ? styles.toolsHeader : ''}`}>
       <IconButton
         size="xl"
         tone="primary"
         icon={<IconMenuOutline20 />}
         aria-label={t('expandSiderbarButton')}
-        onClick={openMobileSider}
+        onClick={onMenu ?? openMobileSider}
       />
+      <ToolNavigation />
       {title === undefined ? null : (
         <>
           <div className={styles.title}>{title}</div>

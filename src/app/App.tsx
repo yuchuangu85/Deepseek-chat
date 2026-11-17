@@ -24,10 +24,14 @@ import { stopReadAloud } from '../services/speech/readAloud.js'
 import { CollapsedSider } from '../components/sider/CollapsedSider.js'
 import { closeMobileSider } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
+import { useRoute } from './router.js'
+import { ToolsPage } from '../components/tools/Tools.js'
+import { SearchTool } from '../components/searchTool/SearchTool.js'
 import styles from './App.module.css'
 
 export const App = () => {
   const t = useTranslate()
+  const route = useRoute()
   const isMobile = useIsMobile()
   const locale = useSettings((state) => state.locale)
   // 移动端侧边栏以独立抽屉管理开合状态
@@ -92,41 +96,59 @@ export const App = () => {
             </div>
           ) : null}
           <div className={styles.content}>
-            {siderCollapsed ? <CollapsedSider /> : null}
-            {!ready || (activeId !== null && !session) ? (
-              <div className={styles.loadingView}>
-                {isMobile ? <MobileHeader /> : null}
-                <div className={styles.loadingState} role="status" aria-live="polite">
-                  <span>
-                    {(!ready ? initError : sessionLoadError)
-                      ? t(!ready ? 'sessionListLoadFailed' : 'sessionLoadFailed')
-                      : t('sessionLoading')}
-                  </span>
-                  {(!ready ? initError : sessionLoadError) ? (
-                    <Button
-                      variant="outlined"
-                      size="m"
-                      onClick={() => {
-                        if (!ready) {
-                          void initChat()
-                        } else if (activeId !== null) {
-                          selectSession(activeId)
-                        }
-                      }}
-                    >
-                      {t('retry')}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ) : session ? (
-              <SessionView
-                session={session}
-                streaming={streaming}
-                siderCollapsed={siderCollapsed}
-              />
+            {route !== 'chat' ? (
+              <>
+                {siderCollapsed ? <CollapsedSider /> : null}
+                {route === 'search' ? (
+                  <SearchTool />
+                ) : (
+                  <ToolsPage
+                    tool={route}
+                    ready={ready}
+                    initError={initError}
+                    onRetry={() => void initChat()}
+                  />
+                )}
+              </>
             ) : (
-              <Welcome />
+              <>
+                {siderCollapsed ? <CollapsedSider /> : null}
+                {!ready || (activeId !== null && !session) ? (
+                  <div className={styles.loadingView}>
+                    {isMobile ? <MobileHeader /> : null}
+                    <div className={styles.loadingState} role="status" aria-live="polite">
+                      <span>
+                        {(!ready ? initError : sessionLoadError)
+                          ? t(!ready ? 'sessionListLoadFailed' : 'sessionLoadFailed')
+                          : t('sessionLoading')}
+                      </span>
+                      {(!ready ? initError : sessionLoadError) ? (
+                        <Button
+                          variant="outlined"
+                          size="m"
+                          onClick={() => {
+                            if (!ready) {
+                              void initChat()
+                            } else if (activeId !== null) {
+                              selectSession(activeId)
+                            }
+                          }}
+                        >
+                          {t('retry')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : session ? (
+                  <SessionView
+                    session={session}
+                    streaming={streaming}
+                    siderCollapsed={siderCollapsed}
+                  />
+                ) : (
+                  <Welcome />
+                )}
+              </>
             )}
           </div>
         </main>
