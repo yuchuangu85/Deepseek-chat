@@ -2,6 +2,7 @@ import { formatDate } from '../../utils/format.js'
 import * as db from './db.js'
 import { replaceHistory, useChatStore } from './store.js'
 import type { Session } from './types.js'
+import { exportToolHistory, importToolHistory } from '../toolHistory.js'
 
 export { BackupError } from './history/errors.js'
 
@@ -35,7 +36,7 @@ export const exportHistory = (): Promise<{ name: string; blob: Blob }> =>
     }
     const { exportArchive } = await import('./history/exportArchive.js')
     const now = new Date()
-    const blob = await exportArchive(readSessions())
+    const blob = await exportArchive(readSessions(), await exportToolHistory())
     return { name: backupFileName(now), blob }
   })
 
@@ -47,7 +48,14 @@ export const importHistory = (file: File): Promise<number> =>
   enqueueBackup(async () => {
     const { checkArchiveFormat, importArchive } = await import('./history/importArchive.js')
     await checkArchiveFormat(file)
-    return replaceHistory(() => importArchive(file))
+    let toolHistory: Awaited<ReturnType<typeof importArchive>> = null
+    const count = await replaceHistory(async () => {
+      toolHistory = await importArchive(file)
+    })
+    if (toolHistory) {
+      await importToolHistory(toolHistory)
+    }
+    return count
   })
 
 /** 确认删除后调用：以空历史原子替换全部本地会话与附件，保留 API Key 和其他设置。 */

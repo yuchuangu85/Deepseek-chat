@@ -1,5 +1,5 @@
 import { useTranslate } from '../../i18n/index.js'
-import { IconCloseOutline16 } from '../base/icons.js'
+import { IconPanelLeftOutline16 } from '../base/icons.js'
 import { IconButton } from '../base/IconButton.js'
 import { closeSearchPanel, useSearchPanel } from './searchPanelState.js'
 import { SourceCard } from './SourceCard.js'
@@ -20,8 +20,8 @@ export const SearchPanel = () => {
           {t('searchResult')}
         </div>
         <IconButton
-          icon={<IconCloseOutline16 />}
-          aria-label={t('close')}
+          icon={<IconPanelLeftOutline16 />}
+          tooltip={t('collapseSiderbarButton')}
           onClick={closeSearchPanel}
         />
       </div>

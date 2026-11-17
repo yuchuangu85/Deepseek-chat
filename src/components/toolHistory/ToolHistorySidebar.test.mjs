@@ -97,10 +97,11 @@ function fixture() {
     '../base/Button.js': { Button: 'Button' },
     '../base/IconButton.js': { IconButton: 'IconButton' },
     '../base/icons.js': {
-      IconCloseOutline16: 'CloseIcon',
+      IconPanelLeftOutline16: 'PanelLeftIcon',
       IconTrashOutline16: 'TrashIcon',
       IconSettingsOutline16: 'SettingsIcon',
     },
+    '../../i18n/index.js': { useTranslate: () => (key) => key },
     '../settings/settingsDialogState.js': { openSettings: () => {} },
     '../base/Modal.js': { Modal: 'Modal' },
     './ToolHistorySidebar.module.css': { default: {} },
@@ -158,49 +159,24 @@ test('filters and sorts history, selecting invokes selection callback', () => {
   assert.equal(closed, 1)
 })
 
-test('switch and delete pass the current kind and block repeated operations', async () => {
+test('sidebar does not expose history settings and delete passes the current kind', async () => {
   const f = fixture()
   let tree = f.render()
-  byType(tree, 'input')[0].props.onChange({ currentTarget: { checked: false } })
-  byType(tree, 'input')[0].props.onChange({ currentTarget: { checked: false } })
-  await flush()
-  assert.deepEqual(f.calls, [['enabled', 'search', false]])
-  tree = f.render()
+  assert.equal(byType(tree, 'input').length, 0)
   const deleteButton = elements(
     tree,
     (node) => node.type === 'IconButton' && node.props['aria-label']?.startsWith('Delete entry')
   )[0]
   deleteButton.props.onClick()
   await flush()
-  assert.deepEqual(f.calls[1], ['delete', 'search', 'new'])
+  assert.deepEqual(f.calls, [['delete', 'search', 'new']])
 })
 
-test('clear requires confirmation, retains the dialog on failure, and can be retried', async () => {
+test('sidebar does not expose a clear action', () => {
   const f = fixture()
-  let tree = f.render()
-  byType(tree, 'Button')
-    .find((button) => button.props.children === 'Clear')
-    .props.onClick()
-  tree = f.render()
-  assert.equal(byType(tree, 'Modal').length, 1)
-  f.setResult(false)
-  byType(tree, 'Button')
-    .find((button) => button.props.children === 'Clear history')
-    .props.onClick()
-  await flush()
-  tree = f.render()
-  assert.equal(byType(tree, 'Modal').length, 1)
-  assert.ok(elements(tree, (node) => node.props?.role === 'alert').length)
-  f.setResult(true)
-  byType(tree, 'Button')
-    .find((button) => button.props.children === 'Clear history')
-    .props.onClick()
-  await flush()
-  assert.equal(byType(f.render(), 'Modal').length, 0)
-  assert.deepEqual(f.calls, [
-    ['clear', 'search'],
-    ['clear', 'search'],
-  ])
+  const tree = f.render()
+  assert.equal(byType(tree, 'Button').some((button) => button.props.children === 'Clear'), false)
+  assert.equal(byType(tree, 'Modal').length, 0)
 })
 
 test('loading and service errors offer a retry', () => {

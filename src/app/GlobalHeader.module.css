@@ -35,16 +35,22 @@
 }
 
 .right {
-  width: 44px;
-  justify-content: center;
+  min-width: 44px;
+  justify-content: flex-end;
 }
 
 .navigation {
   position: absolute;
   left: 50%;
   width: max-content;
-  max-width: calc(100% - 112px);
+  max-width: calc(100% - 160px);
+  overflow-x: auto;
+  scrollbar-width: none;
   transform: translateX(-50%);
+}
+
+.navigation::-webkit-scrollbar {
+  display: none;
 }
 
 @media not all and (min-width: 768px) {

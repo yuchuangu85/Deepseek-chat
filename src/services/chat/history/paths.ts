@@ -1,8 +1,9 @@
-/** ZIP 条目名。条目顺序固定：manifest → user（可能缺失）→ 全部会话 JSON → index → 全部图片。 */
+/** ZIP 条目名。工具历史条目可选，旧版 DeepSeek ZIP 不包含它。 */
 
 export const MANIFEST_PATH = 'manifest.json'
 export const USER_PATH = 'user.json'
 export const INDEX_PATH = 'chat_session_index.json'
+export const TOOL_HISTORY_PATH = 'tool_history.json'
 
 export const sessionPath = (sessionId: string) => `chat_sessions/${sessionId}.json`
 

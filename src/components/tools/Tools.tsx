@@ -423,7 +423,11 @@ const TtsTool = () => {
         rows={7}
       />
       <div className={styles.ttsActions}>
-        <Button onClick={play} disabled={downloading || (status === 'idle' && !text.trim())}>
+        <Button
+          className={styles.ttsPlayButton}
+          onClick={play}
+          disabled={downloading || (status === 'idle' && !text.trim())}
+        >
           {status === 'idle' ? <IconPlayMediaOutline16 /> : <ReadingBars mode={status} />}
           {status === 'idle' ? t('ttsPlay') : t('ttsStop')}
         </Button>

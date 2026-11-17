@@ -1,10 +1,11 @@
 import clsx from 'clsx'
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconDarkOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
   IconFollowsystemOutline16,
+  IconHistoryOutline16,
   IconLightOutline16,
   IconSettingsOutline16,
   IconUploadOutline14,
@@ -17,6 +18,13 @@ import {
 } from '../../services/chat/backup.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { useChatStore } from '../../services/chat/store.js'
+import {
+  clearToolHistory,
+  initToolHistory,
+  setToolHistoryEnabled,
+  useToolHistory,
+  type ToolHistoryKind,
+} from '../../services/toolHistory.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
   isChineseBrowser,
@@ -37,7 +45,7 @@ import { closeSettings, useSettingsDialog, type SettingsSection } from './settin
 import styles from './Settings.module.css'
 
 /**
- * 设置弹窗：分「通用设置」（主题、语言、朗读音色、位置）与「数据管理」（API Key、导入、导出、删除）。
+ * 设置弹窗：分「通用设置」（主题、语言、朗读音色、位置）、「历史记录」与「数据管理」（API Key）。
  * 桌面端为居中弹窗、左侧导航；移动端为底部弹层、导航横排在内容上方
  */
 export const SettingsDialog = () => {
@@ -50,6 +58,11 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
     value: 'general',
     label: 'settingDialogAsideGeneralOptionLabel',
     icon: <IconSettingsOutline16 />,
+  },
+  {
+    value: 'history',
+    label: 'settingDialogAsideHistoryOptionLabel',
+    icon: <IconHistoryOutline16 />,
   },
   { value: 'data', label: 'settingDialogAsideDataOptionLabel', icon: <IconDataOutline16 /> },
 ]
@@ -101,6 +114,11 @@ const SettingsContent = () => {
               <TtsVoiceSetting />
               <LocationSetting />
             </>
+          ) : section === 'history' ? (
+            <>
+              <ToolHistorySettings />
+              <ToolHistoryCleanup />
+            </>
           ) : (
             <>
               <ApiKeyField editor={apiKeyEditor} />
@@ -128,6 +146,175 @@ const SettingsContent = () => {
       </Modal>
       {historyImport.file ? <ImportConfirm historyImport={historyImport} /> : null}
       {historyDelete.opened ? <DeleteAllConfirm historyDelete={historyDelete} /> : null}
+    </>
+  )
+}
+
+const toolHistorySettings: { kind: ToolHistoryKind; label: TranslationKey }[] = [
+  { kind: 'search', label: 'settingsSaveSearchHistory' },
+  { kind: 'asr', label: 'settingsSaveAsrHistory' },
+  { kind: 'tts', label: 'settingsSaveTtsHistory' },
+]
+
+const ToolHistorySettings = () => {
+  const t = useTranslate()
+  const { enabled, ready, error } = useToolHistory()
+  const [pending, setPending] = useState<ToolHistoryKind | null>(null)
+  const [failure, setFailure] = useState(false)
+
+  useEffect(() => {
+    void initToolHistory()
+  }, [])
+
+  const update = async (kind: ToolHistoryKind, value: boolean) => {
+    if (!ready || pending) {
+      return
+    }
+    setPending(kind)
+    setFailure(false)
+    try {
+      if (!(await setToolHistoryEnabled(kind, value))) {
+        setFailure(true)
+      }
+    } catch {
+      setFailure(true)
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const status: Status = error || failure
+    ? { key: 'settingsHistoryUpdateFailed', error: true }
+    : null
+  return (
+    <>
+      {toolHistorySettings.map(({ kind, label }) => (
+        <SettingCell
+          key={kind}
+          label={t(label)}
+          status={status}
+          action={
+            <input
+              className={styles.historySwitch}
+              type="checkbox"
+              role="switch"
+              aria-label={t(label)}
+              checked={enabled[kind]}
+              disabled={!ready || pending !== null}
+              onChange={(event) => void update(kind, event.currentTarget.checked)}
+            />
+          }
+        />
+      ))}
+    </>
+  )
+}
+
+const toolHistoryCleanup: {
+  kind: ToolHistoryKind
+  label: TranslationKey
+  name: TranslationKey
+}[] = [
+  { kind: 'search', label: 'settingsClearSearchHistory', name: 'settingsSearchHistoryName' },
+  { kind: 'asr', label: 'settingsClearAsrHistory', name: 'settingsAsrHistoryName' },
+  { kind: 'tts', label: 'settingsClearTtsHistory', name: 'settingsTtsHistoryName' },
+]
+
+const ToolHistoryCleanup = () => {
+  const t = useTranslate()
+  const { entries, ready, error } = useToolHistory()
+  const [pending, setPending] = useState<ToolHistoryKind | null>(null)
+  const [confirming, setConfirming] = useState<ToolHistoryKind | null>(null)
+  const [failure, setFailure] = useState(false)
+
+  const count = (kind: ToolHistoryKind) => entries.filter((entry) => entry.kind === kind).length
+  const title = confirming
+    ? t(toolHistoryCleanup.find((item) => item.kind === confirming)?.name ?? 'settings')
+    : ''
+
+  const confirm = async () => {
+    if (!confirming || pending) {
+      return
+    }
+    const kind = confirming
+    setPending(kind)
+    setFailure(false)
+    try {
+      if (await clearToolHistory(kind)) {
+        setConfirming(null)
+      } else {
+        setFailure(true)
+      }
+    } catch {
+      setFailure(true)
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const status: Status = error || failure ? { key: 'settingsHistoryUpdateFailed', error: true } : null
+  return (
+    <>
+      {toolHistoryCleanup.map(({ kind, label }) => (
+        <SettingCell
+          key={kind}
+          label={t(label)}
+          status={status}
+          action={
+            <Button
+              variant="dangerOutlined"
+              size="m"
+              className={styles.cellButton}
+              disabled={!ready || pending !== null || count(kind) === 0}
+              onClick={() => {
+                setFailure(false)
+                setConfirming(kind)
+              }}
+            >
+              {t('clearHistory')}
+            </Button>
+          }
+        />
+      ))}
+      {confirming ? (
+        <Modal
+          title={t('settingsClearHistoryTitle')}
+          onClose={() => {
+            if (!pending) {
+              setConfirming(null)
+              setFailure(false)
+            }
+          }}
+          footer={
+            <>
+              <Button
+                variant="outlined"
+                disabled={pending !== null}
+                onClick={() => {
+                  setConfirming(null)
+                  setFailure(false)
+                }}
+              >
+                {t('cancel')}
+              </Button>
+              <Button variant="danger" disabled={pending !== null} onClick={() => void confirm()}>
+                {t('clearHistory')}
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {t('settingsClearHistoryDescription', {
+              history: title,
+            })}
+          </p>
+          {failure ? (
+            <p className={styles.error} role="alert">
+              {t('settingsHistoryUpdateFailed')}
+            </p>
+          ) : null}
+        </Modal>
+      ) : null}
     </>
   )
 }
@@ -465,7 +652,7 @@ const useHistoryImport = () => {
   return { file, busy, status, select: setFile, cancel: () => setFile(null), confirm }
 }
 
-/** 导入 = 覆盖：用选中文件替换本地全部会话与附件。 */
+/** 导入 = 覆盖：用选中文件替换本地全部会话、附件和工具历史。 */
 const ImportHistory = ({
   historyImport,
   disabled,

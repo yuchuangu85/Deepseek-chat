@@ -104,6 +104,19 @@
   line-height: 22px;
 }
 
+.historySwitch {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--dsw-alias-brand-primary);
+
+  &:focus-visible {
+    outline: 2px solid var(--dsw-alias-brand-primary);
+    outline-offset: 2px;
+  }
+}
+
 .uploadButton {
   padding: 0 13px;
 }

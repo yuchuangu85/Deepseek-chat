@@ -378,6 +378,16 @@ export const IconGlobeLanguageOutline14 = () => (
   </svg>
 )
 
+export const IconHistoryOutline16 = () => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M8 1.25C4.27208 1.25 1.25 4.27208 1.25 8C1.25 11.7279 4.27208 14.75 8 14.75C11.7279 14.75 14.75 11.7279 14.75 8H13.35C13.35 10.9543 10.9543 13.35 8 13.35C5.04569 13.35 2.65 10.9543 2.65 8C2.65 5.04569 5.04569 2.65 8 2.65C9.52237 2.65 10.8726 3.28597 11.8171 4.30912L10.8251 5.3011H14.75V1.37622L12.8071 3.31914C11.5748 2.04379 9.88114 1.25 8 1.25Z"
+      fill="currentColor"
+    />
+    <path d="M7.3 4.1H8.7V7.6L10.95 8.9L10.25 10.112L7.3 8.4V4.1Z" fill="currentColor" />
+  </svg>
+)
+
 export const IconLinkOutline16 = () => (
   <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path

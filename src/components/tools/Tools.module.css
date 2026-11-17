@@ -276,6 +276,10 @@
   gap: 8px;
 }
 
+.ttsPlayButton {
+  gap: 6px;
+}
+
 .ttsDownloadButton {
   min-width: 144px;
   gap: 6px;

@@ -52,6 +52,7 @@ export const App = () => {
   })
   const historyCollapsed =
     route === 'chat' ? siderCollapsed : toolHistoryKind !== null && toolCollapsed[toolHistoryKind]
+  const historyOpen = hasHistory && (isMobile ? mobileSiderOpen : !historyCollapsed)
   const setHistoryCollapsed = (collapsed: boolean) => {
     if (route === 'chat') {
       setSiderCollapsed(collapsed)
@@ -106,8 +107,10 @@ export const App = () => {
       <div ref={frameRef} className={styles.frame}>
         <GlobalHeader
           mobile={isMobile}
-          canOpenHistory={hasHistory && (isMobile || historyCollapsed)}
+          canOpenHistory={hasHistory && (isMobile ? !mobileSiderOpen : historyCollapsed)}
+          canCloseHistory={historyOpen}
           onOpenHistory={() => (isMobile ? openMobileSider() : setHistoryCollapsed(false))}
+          onCloseHistory={() => (isMobile ? closeMobileSider() : setHistoryCollapsed(true))}
         />
         <div className={styles.workspace}>
           {isMobile && mobileSiderOpen && hasHistory ? (
@@ -121,7 +124,6 @@ export const App = () => {
                     key={toolHistoryKind}
                     kind={toolHistoryKind}
                     mobile
-                    onClose={closeMobileSider}
                     onSelect={closeMobileSider}
                   />
                 ) : null}
@@ -134,7 +136,6 @@ export const App = () => {
               <ToolHistorySidebar
                 key={toolHistoryKind}
                 kind={toolHistoryKind}
-                onClose={() => setHistoryCollapsed(true)}
               />
             ) : null
           ) : null}

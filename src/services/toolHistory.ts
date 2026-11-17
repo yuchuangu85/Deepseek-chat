@@ -19,6 +19,13 @@ export type NewToolHistoryEntry =
   | { kind: 'asr'; text: string; fileName: string | null; durationMs: number | null }
   | { kind: 'tts'; text: string; voice: 'stella' | 'tide' }
 
+export const TOOL_HISTORY_FORMAT_VERSION = 1
+export type ToolHistoryArchive = {
+  tool_history_format_version: typeof TOOL_HISTORY_FORMAT_VERSION
+  entries: ToolHistoryEntry[]
+  enabled: Record<ToolHistoryKind, boolean>
+}
+
 declare const permitBrand: unique symbol
 export type ToolHistoryPermit = { readonly [permitBrand]: never }
 export type ToolHistoryPermitResult =
@@ -159,6 +166,41 @@ const readEntry = (value: unknown): ToolHistoryEntry => {
   return { ...input, id: value.id, createdAt: value.createdAt }
 }
 
+/** Parse the portable history payload and reject unknown fields or unsafe values. */
+export const readToolHistoryArchive = (value: unknown): ToolHistoryArchive => {
+  if (
+    !object(value) ||
+    value.tool_history_format_version !== TOOL_HISTORY_FORMAT_VERSION ||
+    !Array.isArray(value.entries) ||
+    !object(value.enabled) ||
+    Object.keys(value).length !== 3
+  ) {
+    throw new Error('Invalid tool history archive')
+  }
+  const enabled = value.enabled
+  if (
+    !object(enabled) ||
+    Object.keys(enabled).length !== kinds.length ||
+    kinds.some((kind) => typeof enabled[kind] !== 'boolean')
+  ) {
+    throw new Error('Invalid tool history settings')
+  }
+  const entries = value.entries.map(readEntry)
+  const ids = new Set(entries.map((entry) => entry.id))
+  if (ids.size !== entries.length) {
+    throw new Error('Duplicate tool history entry')
+  }
+  return {
+    tool_history_format_version: TOOL_HISTORY_FORMAT_VERSION,
+    entries,
+    enabled: {
+      search: enabled.search as boolean,
+      asr: enabled.asr as boolean,
+      tts: enabled.tts as boolean,
+    },
+  }
+}
+
 const openHistory = (): Promise<IDBPDatabase<HistoryDB>> =>
   new Promise((resolve, reject) => {
     let blocked = false
@@ -195,6 +237,8 @@ const enqueue = <T>(work: () => Promise<T>): Promise<T> => {
 
 type Change =
   | { type: 'load' }
+  | { type: 'export' }
+  | { type: 'import'; archive: ToolHistoryArchive }
   | { type: 'capture'; kind: ToolHistoryKind }
   | { type: 'add'; input: NewToolHistoryEntry; permit: ToolHistoryPermit | undefined }
   | { type: 'enabled'; kind: ToolHistoryKind; enabled: boolean }
@@ -206,6 +250,8 @@ type RunResult =
   | { status: 'disabled' }
   | { status: 'error' }
   | { status: 'ready'; permit: ToolHistoryPermit }
+  | { status: 'exported'; archive: ToolHistoryArchive }
+  | { status: 'imported'; count: number }
 
 const run = async (change: Change): Promise<RunResult> => {
   let db: IDBPDatabase<HistoryDB> | undefined
@@ -228,7 +274,33 @@ const run = async (change: Change): Promise<RunResult> => {
         generations[parsed.kind] = parsed.generation
       }
       let result: RunResult = { status: 'saved' }
-      if (change.type === 'add') {
+      if (change.type === 'export') {
+        result = {
+          status: 'exported',
+          archive: {
+            tool_history_format_version: TOOL_HISTORY_FORMAT_VERSION,
+            entries: entries.slice(),
+            enabled: { ...enabled },
+          },
+        }
+      } else if (change.type === 'import') {
+        await tx.objectStore('entries').clear()
+        await Promise.all(
+          kinds.map((kind) =>
+            tx.objectStore('settings').put({
+              kind,
+              enabled: change.archive.enabled[kind],
+              generation: nextGeneration(generations[kind]),
+            })
+          )
+        )
+        await Promise.all(change.archive.entries.map((entry) => tx.objectStore('entries').add(entry)))
+        entries = change.archive.entries.slice()
+        for (const kind of kinds) {
+          enabled[kind] = change.archive.enabled[kind]
+        }
+        result = { status: 'imported', count: entries.length }
+      } else if (change.type === 'add') {
         const input = cleanInput(change.input)
         if (
           !enabled[input.kind] ||
@@ -299,6 +371,22 @@ const run = async (change: Change): Promise<RunResult> => {
 
 export const initToolHistory = (): Promise<boolean> =>
   enqueue(async () => (await run({ type: 'load' })).status !== 'error')
+export const exportToolHistory = (): Promise<ToolHistoryArchive> =>
+  enqueue(async () => {
+    const result = await run({ type: 'export' })
+    if (result.status === 'exported') {
+      return result.archive
+    }
+    throw new Error('Tool history export failed')
+  })
+export const importToolHistory = (value: unknown): Promise<number> =>
+  enqueue(async () => {
+    const result = await run({ type: 'import', archive: readToolHistoryArchive(value) })
+    if (result.status === 'imported') {
+      return result.count
+    }
+    throw new Error('Tool history import failed')
+  })
 export const captureToolHistoryPermit = (kind: ToolHistoryKind): Promise<ToolHistoryPermitResult> =>
   enqueue(async () => {
     const result = await run({ type: 'capture', kind })
@@ -319,7 +407,10 @@ export function addToolHistory(
 ): Promise<'saved' | 'disabled' | 'error'> {
   return enqueue(async () => {
     const result = await run({ type: 'add', input, permit })
-    return result.status === 'ready' ? 'error' : result.status
+    if (result.status === 'saved' || result.status === 'disabled' || result.status === 'error') {
+      return result.status
+    }
+    return 'error'
   })
 }
 // oxlint-enable typescript/unified-signatures

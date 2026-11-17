@@ -15,47 +15,15 @@
 .mobile {
   max-width: calc(100vw - 48px);
 }
-.header,
-.switchLabel,
 .item,
 .error {
   display: flex;
   align-items: center;
 }
-.header {
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 4px;
-}
-.header h2 {
-  margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 600;
-}
-.setting {
-  padding: 16px 4px 12px;
-}
-.switchLabel {
-  justify-content: space-between;
-  gap: 12px;
-  cursor: pointer;
-}
-.switchLabel input {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--dsw-alias-brand-primary);
-}
-.hint,
 .metadata {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   line-height: 18px;
-}
-.hint {
-  margin: 8px 0 0;
 }
 .listWrap {
   flex: 1;
@@ -90,8 +58,7 @@
   text-align: left;
   cursor: pointer;
 }
-.entry:focus-visible,
-.switchLabel input:focus-visible {
+.entry:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: -2px;
 }
@@ -124,17 +91,6 @@
   padding: 8px 4px;
   color: var(--dsw-alias-state-error-primary);
 }
-.errorText {
-  color: var(--dsw-alias-state-error-primary);
-}
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 12px;
-}
-
 .settings {
   display: inline-flex;
   align-items: center;
