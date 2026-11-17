@@ -200,7 +200,11 @@ const OcrTool = () => {
       {task?.status === 'error' ? (
         <p className={styles.error}>{t(task.error.key, task.error.params)}</p>
       ) : null}
-      <Button onClick={submit} disabled={!file || task?.status !== 'done' || busy}>
+      <Button
+        className={styles.ocrSubmit}
+        onClick={submit}
+        disabled={!file || task?.status !== 'done' || busy}
+      >
         {t('toolOcrSubmit')}
       </Button>
     </section>

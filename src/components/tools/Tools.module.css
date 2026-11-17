@@ -113,6 +113,10 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+.ocrSubmit {
+  margin-top: 16px;
+}
+
 .status,
 .error {
   margin: 10px 0 0;
