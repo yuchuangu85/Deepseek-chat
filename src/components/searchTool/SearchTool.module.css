@@ -65,8 +65,8 @@
   align-items: center;
   gap: 12px;
   box-sizing: border-box;
-  min-height: 58px;
-  padding: 6px 6px 6px 16px;
+  min-height: 46.4px;
+  padding: 4px 6px 4px 16px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-2);
@@ -127,6 +127,9 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+.submit {
+  min-height: 34px;
 }
 .submit:disabled {
   opacity: 0.5;
@@ -407,18 +410,19 @@
   .state {
     padding: 55px 8px;
   }
+  .submit {
+    flex-shrink: 0;
+    padding: 0 10px;
+    font-size: 13px;
+  }
 }
 
 @media (max-width: 440px) {
   .form {
-    flex-wrap: wrap;
-    gap: 8px;
+    gap: 7px;
   }
   .form input {
-    min-height: 40px;
-  }
-  .submit {
-    flex: 1 0 100%;
+    min-height: 32px;
   }
   .helper {
     flex-wrap: wrap;

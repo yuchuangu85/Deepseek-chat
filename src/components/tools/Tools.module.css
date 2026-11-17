@@ -47,6 +47,10 @@
   background: var(--dsw-alias-bg-layer-1);
 }
 
+.panel button {
+  border-radius: 8px;
+}
+
 .label {
   display: block;
   margin-bottom: 8px;
